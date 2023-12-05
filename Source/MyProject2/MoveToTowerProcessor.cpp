@@ -41,7 +41,7 @@ void UMoveToTowerProcessor::Execute(FMassEntityManager& EntityManager, FMassExec
 
 				if (target.Length() < 200.f)
 				{
-					UE_LOG(LogTemp, Warning, TEXT("ARRIVED"));
+					//UE_LOG(LogTemp, Warning, TEXT("ARRIVED"));
 
 					//EntityManager->
 
@@ -50,7 +50,7 @@ void UMoveToTowerProcessor::Execute(FMassEntityManager& EntityManager, FMassExec
 				else
 				{
 					transform.SetLocation(transform.GetLocation() + target.GetSafeNormal() * 400.f * Context.GetDeltaTimeSeconds());
-					UE_LOG(LogTemp, Warning, TEXT("MOVING"));
+					//UE_LOG(LogTemp, Warning, TEXT("MOVING"));
 				}
 
 			}
