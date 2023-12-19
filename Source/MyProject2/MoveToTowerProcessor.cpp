@@ -7,6 +7,7 @@
 #include "MassExecutionContext.h"
 #include "MassEntityManager.h"
 
+
 UMoveToTowerProcessor::UMoveToTowerProcessor()
 {
 	UE_LOG(LogTemp, Warning, TEXT("REGISTERED"));
