@@ -57,7 +57,8 @@ void UNavMeshMovementProcessor::Execute(FMassEntityManager& EntityManager, FMass
 				{
 					FNavLocation Result;
 
-					NavSysPtr->GetRandomReachablePointInRadius(FVector{ 0,0,200 }, 2000.f, Result);
+					NavSysPtr->GetRandomReachablePointInRadius(FVector{ 300,0,10 }, 2500.f, Result);
+					//UE_LOG(LogTemp, Error, TEXT("Current Destination: %s"), *(Result.Location.ToString()));
 					Path.myTargetLocation = Result.Location;
 
 					FAIMoveRequest MoveRequest(TargetVector);
@@ -81,7 +82,7 @@ void UNavMeshMovementProcessor::Execute(FMassEntityManager& EntityManager, FMass
 
 				MoveTarget.DistanceToGoal = (MoveTarget.Center - Transform.GetLocation()).Size();
 				MoveTarget.Forward = (MoveTarget.Center - Transform.GetLocation()).GetSafeNormal();
-				
+				DrawDebugDirectionalArrow(GetWorld(), Transform.GetLocation(), Transform.GetLocation() + MoveTarget.Forward * 15.f, 1.f, FColor::Red);
 
 				/*Transform.SetLocation(Transform.GetLocation() + 
 					MoveTarget.Forward * MovementParameters.DefaultDesiredSpeed * Context.GetDeltaTimeSeconds());*/
