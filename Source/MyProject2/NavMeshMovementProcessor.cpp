@@ -10,7 +10,7 @@
 #include "MassNavigationFragments.h"
 #include "NavigationSystem.h"
 #include "NavMeshPathTrait.h"
-
+#include "Misc/App.h"
 #include "MassExecutionContext.h"
 #include "MassEntityManager.h"
 
@@ -26,17 +26,24 @@ UNavMeshMovementProcessor::UNavMeshMovementProcessor()
 
 void UNavMeshMovementProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
+	//int32 size = myEntities.GetNumMatchingEntities(EntityManager);
+	//UE_LOG(LogTemp, Warning, TEXT("COUNT: %i"), size);
+	//ParallelFor(size, [&](const int32 JobIndex)
+	//{
+	//Context.GetWorld()->GetDeltaSeconds();
+	FApp::GetDeltaTime();
+		
 	myEntities.ForEachEntityChunk(EntityManager, Context, [this](FMassExecutionContext& Context)
 		{
 			const TArrayView<FTransformFragment> transforms = Context.GetMutableFragmentView<FTransformFragment>();
 			const TArrayView<FMassMoveTargetFragment> NavTargetsList = Context.GetMutableFragmentView<FMassMoveTargetFragment>();
 			const TArrayView<FNavMeshPathFragment> PathList = Context.GetMutableFragmentView<FNavMeshPathFragment>();
 			const FMassMovementParameters& MovementParameters = Context.GetConstSharedFragment<FMassMovementParameters>();
-			
+
 			UNavigationSystemV1* NavSysPtr = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
 			UE_ASSUME(NavSysPtr != nullptr);
 			//UE_LOG(LogTemp, Warning, TEXT("NAVMESH EXEC"));
-			
+
 			for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
 			{
 				// Get fragment data
@@ -52,7 +59,7 @@ void UNavMeshMovementProcessor::Execute(FMassEntityManager& EntityManager, FMass
 				FVector& TargetVector = Path.myTargetLocation;
 
 				// Calculate path
-				
+
 				if (Path.myPathResult.Result != ENavigationQueryResult::Success)
 				{
 					FNavLocation Result;
@@ -76,18 +83,18 @@ void UNavMeshMovementProcessor::Execute(FMassEntityManager& EntityManager, FMass
 						GetWorld()->LineTraceSingleByChannel(OutHit, Transform.GetLocation() + (Transform.GetRotation().GetUpVector() * 100), Transform.GetLocation() - (Transform.GetRotation().GetUpVector() * 100), ECollisionChannel::ECC_Visibility);
 						MoveTarget.Center.Z = OutHit.ImpactPoint.Z;
 					}
-					
+
 					MoveTarget.DesiredSpeed = FMassInt16Real(MovementParameters.DefaultDesiredSpeed);
 				}
 
 				MoveTarget.DistanceToGoal = (MoveTarget.Center - Transform.GetLocation()).Size();
 				MoveTarget.Forward = (MoveTarget.Center - Transform.GetLocation()).GetSafeNormal();
-				DrawDebugDirectionalArrow(GetWorld(), Transform.GetLocation(), Transform.GetLocation() + MoveTarget.Forward * 15.f, 1.f, FColor::Red);
+				//DrawDebugDirectionalArrow(GetWorld(), Transform.GetLocation(), Transform.GetLocation() + MoveTarget.Forward * 15.f, 1.f, FColor::Red);
 
-				/*Transform.SetLocation(Transform.GetLocation() + 
+				/*Transform.SetLocation(Transform.GetLocation() +
 					MoveTarget.Forward * MovementParameters.DefaultDesiredSpeed * Context.GetDeltaTimeSeconds());*/
 
-				// Go from point to point to reach final destination
+					// Go from point to point to reach final destination
 				if (MoveTarget.DistanceToGoal <= MoveTarget.SlackRadius)
 				{
 					if (Path.myPathIndex < Path.myPathResult.Path->GetPathPoints().Num() - 1)
@@ -106,13 +113,16 @@ void UNavMeshMovementProcessor::Execute(FMassEntityManager& EntityManager, FMass
 
 						Path.myPathIndex = 0;
 						Path.myPathResult.Result = ENavigationQueryResult::Invalid;
-						
+
 						//UE_LOG(LogTemp, Error, TEXT("Current Destination: %s"), *(Path.TargetLocation.ToString()));
 					}
 				}
 			}
-			
+
 		});
+
+	//});
+	
 //
 //
 //
