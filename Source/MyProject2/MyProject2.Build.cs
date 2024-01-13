@@ -10,7 +10,9 @@ public class MyProject2 : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "NavigationSystem", "AIModule" });
+        PublicIncludePaths.AddRange(new string[] { "../Ext/nanoflann/include" });
+
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "NavigationSystem", "AIModule", "StructUtils" });
 		PrivateDependencyModuleNames.AddRange(new string[] { "MassAIBehavior",
             "MassAIDebug",
 

@@ -41,7 +41,7 @@ void UNavMeshMovementProcessor::Execute(FMassEntityManager& EntityManager, FMass
 			const FMassMovementParameters& MovementParameters = Context.GetConstSharedFragment<FMassMovementParameters>();
 
 			UNavigationSystemV1* NavSysPtr = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
-			UE_ASSUME(NavSysPtr != nullptr);
+			//UE_ASSUME(NavSysPtr != nullptr);
 			//UE_LOG(LogTemp, Warning, TEXT("NAVMESH EXEC"));
 
 			for (int32 EntityIndex = 0; EntityIndex < Context.GetNumEntities(); ++EntityIndex)
@@ -53,7 +53,7 @@ void UNavMeshMovementProcessor::Execute(FMassEntityManager& EntityManager, FMass
 
 				// TEMPORARY HACK
 				if (Path.myHasMoved) continue;
-
+				//
 				// Get info from fragments
 				FVector CurrentLocation = Transform.GetLocation();
 				FVector& TargetVector = Path.myTargetLocation;
