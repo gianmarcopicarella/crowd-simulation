@@ -29,6 +29,8 @@
 //DEFINE_LOG_CATEGORY(LogAvoidanceAgents);
 //DEFINE_LOG_CATEGORY(LogAvoidanceObstacles);
 
+
+
 namespace UE::CustomMassAvoidance
 {
 	namespace Tweakables
@@ -43,13 +45,20 @@ namespace UE::CustomMassAvoidance
 	constexpr int32 MinTouchingCellCount = 4;
 	constexpr int32 MaxObstacleResults = MaxExpectedAgentsPerCell * MinTouchingCellCount;
 
-	static void FindCloseObstacles(const FVector& Center, const FVector::FReal SearchRadius, const my_kd_tree_t& AvoidanceObstacleGrid,
-		TArray<FMassNavigationObstacleItem, TFixedAllocator<MaxObstacleResults>>& OutCloseEntities, const int32 MaxResults)
+
+
+
+	static void FindCloseObstacles(
+		const FMassEntityHandle Entity,
+		const FVector& Center,
+		const FVector::FReal SearchRadius,
+		const my_kd_tree_t& AvoidanceObstacleGrid,
+		TArray<FSortedObstacle, TFixedAllocator<UE::CustomMassAvoidance::MaxObstacleResults>>& OutClosestObstacles,
+		FMassEntityManager& EntityManager,
+		const int32 MaxResults)
 	{
-		OutCloseEntities.Reset();
+		OutClosestObstacles.Empty();
 
-
-		// radius search:
 		const double                                       squaredRadius = SearchRadius * SearchRadius;
 		std::vector<nanoflann::ResultItem<size_t, double>> indices_dists;
 		indices_dists.reserve(MaxResults);
@@ -62,13 +71,106 @@ namespace UE::CustomMassAvoidance
 		c.emplace_back(Center.Y);
 
 		AvoidanceObstacleGrid.findNeighbors(resultSet, c.data(), nanoflann::SearchParameters{ 100.f });
-
+		
 		for (int i = 0; i < std::min(indices_dists.size(), (size_t)MaxResults); ++i)
 		{
 			const auto idx = indices_dists[i].first;
-			OutCloseEntities.Add(FMassNavigationObstacleItem{ AvoidanceObstacleGrid.dataset_.pts[idx].entity });
+			const auto otherEntity = AvoidanceObstacleGrid.dataset_.pts[idx].entity;
 
+			if (otherEntity == Entity)
+			{
+				continue;
+			}
+
+			// Skip invalid entities.
+			if (!EntityManager.IsEntityValid(otherEntity))
+			{
+				//UE_LOG(LogAvoidanceObstacles, VeryVerbose, TEXT("Close entity is invalid, skipped."));
+				continue;
+			}
+
+			// Skip too far
+			const FTransform& Transform = EntityManager.GetFragmentDataChecked<FTransformFragment>(otherEntity).GetTransform();
+			const FVector OtherLocation = Transform.GetLocation();
+
+			FSortedObstacle Obstacle;
+			Obstacle.LocationCached = OtherLocation;
+			Obstacle.Forward = Transform.GetRotation().GetForwardVector();
+			Obstacle.ObstacleItem = FMassNavigationObstacleItem{ otherEntity };
+			Obstacle.SqDist = indices_dists[i].second;
+			OutClosestObstacles.Add(Obstacle);
 		}
+	}
+
+
+	static void FindCloseObstacles(const FVector& Center, const FVector::FReal SearchRadius, const my_kd_tree_t& AvoidanceObstacleGrid,
+		TArray<FMassNavigationObstacleItem, TFixedAllocator<MaxObstacleResults>>& OutCloseEntities, const int32 MaxResults)
+	{
+		OutCloseEntities.Reset();
+
+
+		// radius search:
+
+		//std::vector<nanoflann::ResultItem<size_t, double>> indices_dists;
+		//indices_dists.reserve(MaxResults);
+
+		//nanoflann::RadiusResultSet<double, size_t>         resultSet(
+		//	squaredRadius, indices_dists);
+
+		//std::vector<double> c;
+		//c.emplace_back(Center.X);
+		//c.emplace_back(Center.Y);
+
+		//AvoidanceObstacleGrid.findNeighbors(resultSet, c.data(), nanoflann::SearchParameters{ 100.f });
+
+		//for (int i = 0; i < std::min(indices_dists.size(), (size_t)MaxResults); ++i)
+		//{
+		//	const auto idx = indices_dists[i].first;
+		//	OutCloseEntities.Add(FMassNavigationObstacleItem{ AvoidanceObstacleGrid.dataset_.pts[idx].entity });
+
+		//}
+
+		//// Find close obstacles
+		//		//const FNavigationObstacleHashGrid2D& AvoidanceObstacleGrid = CustomNavigationSubsystem->GetObstacleGridMutable();
+		////UE::CustomMassAvoidance::FindCloseObstacles(AgentLocation, MovingAvoidanceParams.ObstacleDetectionDistance, grid_TEST, CloseEntities, UE::CustomMassAvoidance::MaxObstacleResults);
+
+		//// Remove unwanted and find the closests in the CloseEntities
+		////const FVector::FReal DistanceCutOffSqr = FMath::Square(MovingAvoidanceParams.ObstacleDetectionDistance);
+		//ClosestObstacles.Reset();
+		//for (const auto OtherEntity : CloseEntities)
+		//{
+		//	// Skip self
+		//	if (OtherEntity.Entity == Entity)
+		//	{
+		//		continue;
+		//	}
+
+		//	// Skip invalid entities.
+		//	if (!EntityManager.IsEntityValid(OtherEntity.Entity))
+		//	{
+		//		//UE_LOG(LogAvoidanceObstacles, VeryVerbose, TEXT("Close entity is invalid, skipped."));
+		//		continue;
+		//	}
+
+		//	// Skip too far
+		//	const FTransform& Transform = EntityManager.GetFragmentDataChecked<FTransformFragment>(OtherEntity.Entity).GetTransform();
+		//	const FVector OtherLocation = Transform.GetLocation();
+
+		//	const FVector::FReal SqDist = FVector::DistSquared(AgentLocation, OtherLocation);
+		//	/*if (SqDist > DistanceCutOffSqr)
+		//	{
+		//		continue;
+		//	}*/
+
+		//	FSortedObstacle Obstacle;
+		//	Obstacle.LocationCached = OtherLocation;
+		//	Obstacle.Forward = Transform.GetRotation().GetForwardVector();
+		//	Obstacle.ObstacleItem = OtherEntity;
+		//	Obstacle.SqDist = SqDist;
+		//	ClosestObstacles.Add(Obstacle);
+		//}
+
+
 
 		// Get worst (furthest) point, without sorting:
 		/*nanoflann::ResultItem<size_t, double> worst_pair =
@@ -213,6 +315,9 @@ void UCustomAvoidanceProcessor::ConfigureQueries()
 	EntityQuery.AddRequirement<FTransformFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FMassVelocityFragment>(EMassFragmentAccess::ReadOnly);
 	EntityQuery.AddRequirement<FAgentRadiusFragment>(EMassFragmentAccess::ReadOnly);
+
+	EntityQuery.AddRequirement<FCustomMassNavigationObstacleGridCellLocationFragment>(EMassFragmentAccess::ReadOnly);
+
 	EntityQuery.AddTagRequirement<FMassMediumLODTag>(EMassFragmentPresence::None);
 	EntityQuery.AddTagRequirement<FMassLowLODTag>(EMassFragmentPresence::None);
 	EntityQuery.AddTagRequirement<FMassOffLODTag>(EMassFragmentPresence::None);
@@ -242,6 +347,45 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 	const auto& pc = CustomNavigationSubsystem->GetObstacleTree();
 	my_kd_tree_t grid_TEST(2 /*dim*/, pc, { 10 /* max leaf */ });
 
+	//ParallelFor(EParallelForFlags::)
+	int c = 0;
+	EntityQuery.ForEachEntityChunk(EntityManager, Context, [this, &grid_TEST, &EntityManager, &c](FMassExecutionContext& Context)
+		{
+			const int32 NumEntities = Context.GetNumEntities();
+
+			const TArrayView<FMassForceFragment> ForceList = Context.GetMutableFragmentView<FMassForceFragment>();
+			const TConstArrayView<FTransformFragment> LocationList = Context.GetFragmentView<FTransformFragment>();
+			const FCustomMassMovingAvoidanceParameters& MovingAvoidanceParams = Context.GetConstSharedFragment<FCustomMassMovingAvoidanceParameters>();
+			auto GridList = Context.GetMutableFragmentView <FCustomMassNavigationObstacleGridCellLocationFragment>();
+
+			ParallelFor(NumEntities, [&](int32 EntityIndex) {
+
+				//EntityIndex = EntityIndex + c;
+
+				const FTransformFragment& Location = LocationList[EntityIndex];
+				
+				FMassEntityHandle Entity = Context.GetEntity(EntityIndex);
+				const FVector AgentLocation = Location.GetTransform().GetTranslation();
+
+				UE::CustomMassAvoidance::FindCloseObstacles(
+					Entity,
+					AgentLocation,
+					MovingAvoidanceParams.ObstacleDetectionDistance,
+					grid_TEST,
+					GridList[EntityIndex].neighbours,
+					EntityManager,
+					UE::CustomMassAvoidance::MaxObstacleResults);
+
+
+				//UE::CustomMassAvoidance::FindCloseObstacles(AgentLocation, MovingAvoidanceParams.ObstacleDetectionDistance, grid_TEST, CloseEntities, UE::CustomMassAvoidance::MaxObstacleResults);
+
+
+				}, EParallelForFlags::BackgroundPriority);
+
+			c += NumEntities;
+
+		});
+
 
 	EntityQuery.ForEachEntityChunk(EntityManager, Context, [this, &grid_TEST, &EntityManager](FMassExecutionContext& Context)
 		{
@@ -258,20 +402,22 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 			const FCustomMassMovingAvoidanceParameters& MovingAvoidanceParams = Context.GetConstSharedFragment<FCustomMassMovingAvoidanceParameters>();
 			const FMassMovementParameters& MovementParams = Context.GetConstSharedFragment<FMassMovementParameters>();
 
+			auto GridList = Context.GetMutableFragmentView <FCustomMassNavigationObstacleGridCellLocationFragment>();
+
 			const FVector::FReal InvPredictiveAvoidanceTime = 1. / MovingAvoidanceParams.PredictiveAvoidanceTime;
 
 			// Arrays used to store close obstacles
-			TArray<FMassNavigationObstacleItem, TFixedAllocator<UE::CustomMassAvoidance::MaxObstacleResults>> CloseEntities;
+			//TArray<FMassNavigationObstacleItem, TFixedAllocator<UE::CustomMassAvoidance::MaxObstacleResults>> CloseEntities;
 
 			// Used for storing sorted list or nearest obstacles.
-			struct FSortedObstacle
+			/*struct FSortedObstacle
 			{
 				FVector LocationCached;
 				FVector Forward;
 				FMassNavigationObstacleItem ObstacleItem;
 				FVector::FReal SqDist;
 			};
-			TArray<FSortedObstacle, TFixedAllocator<UE::CustomMassAvoidance::MaxObstacleResults>> ClosestObstacles;
+			TArray<FSortedObstacle, TFixedAllocator<UE::CustomMassAvoidance::MaxObstacleResults>> ClosestObstacles;*/
 
 			// Potential contact between agent and environment. 
 			struct FEnvironmentContact
@@ -505,50 +651,51 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 
 				// Find close obstacles
 				//const FNavigationObstacleHashGrid2D& AvoidanceObstacleGrid = CustomNavigationSubsystem->GetObstacleGridMutable();
-				UE::CustomMassAvoidance::FindCloseObstacles(AgentLocation, MovingAvoidanceParams.ObstacleDetectionDistance, grid_TEST, CloseEntities, UE::CustomMassAvoidance::MaxObstacleResults);
+				//UE::CustomMassAvoidance::FindCloseObstacles(AgentLocation, MovingAvoidanceParams.ObstacleDetectionDistance, grid_TEST, CloseEntities, UE::CustomMassAvoidance::MaxObstacleResults);
 
-				// Remove unwanted and find the closests in the CloseEntities
-				//const FVector::FReal DistanceCutOffSqr = FMath::Square(MovingAvoidanceParams.ObstacleDetectionDistance);
-				ClosestObstacles.Reset();
-				for (const auto OtherEntity : CloseEntities)
-				{
-					// Skip self
-					if (OtherEntity.Entity == Entity)
-					{
-						continue;
-					}
+				//// Remove unwanted and find the closests in the CloseEntities
+				////const FVector::FReal DistanceCutOffSqr = FMath::Square(MovingAvoidanceParams.ObstacleDetectionDistance);
+				//ClosestObstacles.Reset();
+				//for (const auto OtherEntity : CloseEntities)
+				//{
+				//	// Skip self
+				//	if (OtherEntity.Entity == Entity)
+				//	{
+				//		continue;
+				//	}
 
-					// Skip invalid entities.
-					if (!EntityManager.IsEntityValid(OtherEntity.Entity))
-					{
-						//UE_LOG(LogAvoidanceObstacles, VeryVerbose, TEXT("Close entity is invalid, skipped."));
-						continue;
-					}
+				//	// Skip invalid entities.
+				//	if (!EntityManager.IsEntityValid(OtherEntity.Entity))
+				//	{
+				//		//UE_LOG(LogAvoidanceObstacles, VeryVerbose, TEXT("Close entity is invalid, skipped."));
+				//		continue;
+				//	}
 
-					// Skip too far
-					const FTransform& Transform = EntityManager.GetFragmentDataChecked<FTransformFragment>(OtherEntity.Entity).GetTransform();
-					const FVector OtherLocation = Transform.GetLocation();
+				//	// Skip too far
+				//	const FTransform& Transform = EntityManager.GetFragmentDataChecked<FTransformFragment>(OtherEntity.Entity).GetTransform();
+				//	const FVector OtherLocation = Transform.GetLocation();
 
-					const FVector::FReal SqDist = FVector::DistSquared(AgentLocation, OtherLocation);
-					/*if (SqDist > DistanceCutOffSqr)
-					{
-						continue;
-					}*/
+				//	const FVector::FReal SqDist = FVector::DistSquared(AgentLocation, OtherLocation);
+				//	/*if (SqDist > DistanceCutOffSqr)
+				//	{
+				//		continue;
+				//	}*/
 
-					FSortedObstacle Obstacle;
-					Obstacle.LocationCached = OtherLocation;
-					Obstacle.Forward = Transform.GetRotation().GetForwardVector();
-					Obstacle.ObstacleItem = OtherEntity;
-					Obstacle.SqDist = SqDist;
-					ClosestObstacles.Add(Obstacle);
-				}
+				//	FSortedObstacle Obstacle;
+				//	Obstacle.LocationCached = OtherLocation;
+				//	Obstacle.Forward = Transform.GetRotation().GetForwardVector();
+				//	Obstacle.ObstacleItem = OtherEntity;
+				//	Obstacle.SqDist = SqDist;
+				//	ClosestObstacles.Add(Obstacle);
+				//}
 				//ClosestObstacles.Sort([](const FSortedObstacle& A, const FSortedObstacle& B) { return A.SqDist < B.SqDist; });
 
-				
+				auto ClosestObstacles = GridList[EntityIndex].neighbours;
 
 				// Compute forces
 				OldSteeringForce = SteeringForce;
 				FVector TotalAgentSeparationForce = FVector::ZeroVector;
+
 
 				// Fill collider list from close agents
 				Colliders.Reset();
@@ -722,7 +869,7 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 				SteeringForce *= NearStartScaling * NearEndScaling;
 
 				Force.Value = UE::MassNavigation::ClampVector(SteeringForce, MaxSteerAccel); // Assume unit mass
-				
+
 			}
 		});
 }

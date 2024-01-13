@@ -176,12 +176,21 @@ protected:
 		FCustomMassStandingAvoidanceParameters StandingParameters;
 };
 
+struct FSortedObstacle
+{
+	FVector LocationCached;
+	FVector Forward;
+	FMassNavigationObstacleItem ObstacleItem;
+	FVector::FReal SqDist;
+};
 
 USTRUCT()
 struct MYPROJECT2_API FCustomMassNavigationObstacleGridCellLocationFragment : public FMassFragment
 {
 	GENERATED_BODY()
 		FNavigationObstacleHashGrid2D::FCellLocation CellLoc;
+
+	TArray<FSortedObstacle, TFixedAllocator<24>> neighbours;
 };
 
 
