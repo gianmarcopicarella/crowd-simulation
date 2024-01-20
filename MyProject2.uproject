@@ -10,7 +10,8 @@
 			"LoadingPhase": "Default",
 			"AdditionalDependencies": [
 				"MassSpawner",
-				"MassEntity"
+				"MassEntity",
+				"Engine"
 			]
 		}
 	],

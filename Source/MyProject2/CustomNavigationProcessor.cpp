@@ -64,8 +64,13 @@ void UCustomMassNavigationObstacleGridProcessor::ConfigureQueries()
 
 void UCustomMassNavigationObstacleGridProcessor::Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context)
 {
-	auto& pc = CustomNavigationSubsystem->GetObstacleTreeMutable();
-	pc.pts.clear();
+	PointCloud2D pc;
+
+	if (!CustomNavigationSubsystem->isQueueEmpty())
+	{
+		EntityManager.Defer().DestroyEntities(CustomNavigationSubsystem->GetZombiesToKill());
+		CustomNavigationSubsystem->EraseZombiesToKill();
+	}
 
 	AddToGridEntityQuery.ForEachEntityChunk(EntityManager, Context, [this, &pc, &EntityManager](FMassExecutionContext& Context)
 		{
@@ -106,87 +111,7 @@ void UCustomMassNavigationObstacleGridProcessor::Execute(FMassEntityManager& Ent
 			}
 		});
 
-	
-	// can't be ParallelFor due to MovementSubsystem->GetGridMutable().Move not being thread-safe
-	/*
-	AddToGridEntityQuery.ForEachEntityChunk(EntityManager, Context, [this, &EntityManager](FMassExecutionContext& Context)
-		{
-			auto& HashGrid = Context.GetMutableSubsystemChecked<UCustomMassNavigationSubsystem>().GetObstacleGridMutable();
-			const int32 NumEntities = Context.GetNumEntities();
-
-			TConstArrayView<FTransformFragment> LocationList = Context.GetFragmentView<FTransformFragment>();
-			TConstArrayView<FAgentRadiusFragment> RadiiList = Context.GetFragmentView<FAgentRadiusFragment>();
-			TArrayView<FCustomMassNavigationObstacleGridCellLocationFragment> NavigationObstacleCellLocationList = Context.GetMutableFragmentView<FCustomMassNavigationObstacleGridCellLocationFragment>();
-			const bool bHasColliderData = Context.GetFragmentView<FMassAvoidanceColliderFragment>().Num() > 0;
-
-			for (int32 EntityIndex = 0; EntityIndex < NumEntities; ++EntityIndex)
-			{
-				// Add to the grid
-				const FVector NewPos = LocationList[EntityIndex].GetTransform().GetLocation();
-				const float Radius = RadiiList[EntityIndex].Radius;
-
-				FMassNavigationObstacleItem ObstacleItem;
-				ObstacleItem.Entity = Context.GetEntity(EntityIndex);
-				ObstacleItem.ItemFlags |= bHasColliderData ? EMassNavigationObstacleFlags::HasColliderData : EMassNavigationObstacleFlags::None;
-
-				const FBox NewBounds(NewPos - FVector(Radius, Radius, 0.f), NewPos + FVector(Radius, Radius, 0.f));
-				NavigationObstacleCellLocationList[EntityIndex].CellLoc = HashGrid.Add(ObstacleItem, NewBounds);
-
-				Context.Defer().AddTag<FMassInNavigationObstacleGridTag>(ObstacleItem.Entity);
-			}
-		});
-
-	UpdateGridEntityQuery.ForEachEntityChunk(EntityManager, Context, [this, &EntityManager](FMassExecutionContext& Context)
-		{
-			auto& HashGrid = Context.GetMutableSubsystemChecked<UCustomMassNavigationSubsystem>().GetObstacleGridMutable();
-			const int32 NumEntities = Context.GetNumEntities();
-
-			TConstArrayView<FTransformFragment> LocationList = Context.GetFragmentView<FTransformFragment>();
-			TConstArrayView<FAgentRadiusFragment> RadiiList = Context.GetFragmentView<FAgentRadiusFragment>();
-			TArrayView<FCustomMassNavigationObstacleGridCellLocationFragment> NavigationObstacleCellLocationList = Context.GetMutableFragmentView<FCustomMassNavigationObstacleGridCellLocationFragment>();
-			const bool bHasColliderData = Context.GetFragmentView<FMassAvoidanceColliderFragment>().Num() > 0;
-
-			for (int32 EntityIndex = 0; EntityIndex < NumEntities; ++EntityIndex)
-			{
-				// Update position in grid
-				const FVector NewPos = LocationList[EntityIndex].GetTransform().GetLocation();
-				const float Radius = RadiiList[EntityIndex].Radius;
-				FMassNavigationObstacleItem ObstacleItem;
-				ObstacleItem.Entity = Context.GetEntity(EntityIndex);
-				ObstacleItem.ItemFlags |= bHasColliderData ? EMassNavigationObstacleFlags::HasColliderData : EMassNavigationObstacleFlags::None;
-
-				const FBox NewBounds(NewPos - FVector(Radius, Radius, 0.f), NewPos + FVector(Radius, Radius, 0.f));
-				NavigationObstacleCellLocationList[EntityIndex].CellLoc = HashGrid.Move(ObstacleItem, NavigationObstacleCellLocationList[EntityIndex].CellLoc, NewBounds);
-
-#if WITH_MASSGAMEPLAY_DEBUG && 0
-				const FDebugContext BaseDebugContext(this, LogAvoidance, nullptr, ObstacleItem.Entity);
-				if (DebugIsSelected(ObstacleItem.Entity))
-				{
-					FBox Box = MovementSubsystem->GetGridMutable().CalcCellBounds(AvoidanceObstacleCellLocationList[EntityIndex].CellLoc);
-					Box.Max.Z += 200.f;
-					DebugDrawBox(BaseDebugContext, Box, FColor::Yellow);
-				}
-#endif // WITH_MASSGAMEPLAY_DEBUG
-		}
-});
-
-	RemoveFromGridEntityQuery.ForEachEntityChunk(EntityManager, Context, [this, &EntityManager](FMassExecutionContext& Context)
-		{
-			auto& HashGrid = Context.GetMutableSubsystemChecked<UCustomMassNavigationSubsystem>().GetObstacleGridMutable();
-			const int32 NumEntities = Context.GetNumEntities();
-
-			TArrayView<FCustomMassNavigationObstacleGridCellLocationFragment> AvoidanceObstacleCellLocationList = Context.GetMutableFragmentView<FCustomMassNavigationObstacleGridCellLocationFragment>();
-			for (int32 EntityIndex = 0; EntityIndex < NumEntities; ++EntityIndex)
-			{
-				FMassNavigationObstacleItem ObstacleItem;
-				ObstacleItem.Entity = Context.GetEntity(EntityIndex);
-				HashGrid.Remove(ObstacleItem, AvoidanceObstacleCellLocationList[EntityIndex].CellLoc);
-				AvoidanceObstacleCellLocationList[EntityIndex].CellLoc = FNavigationObstacleHashGrid2D::FCellLocation();
-				//UE_LOG(LogTemp, Warning, TEXT("AAA"));
-				Context.Defer().RemoveTag<FMassInNavigationObstacleGridTag>(ObstacleItem.Entity);
-			}
-		});
-		*/
+	CustomNavigationSubsystem->SetPoints(pc);
 }
 
 //----------------------------------------------------------------------//

@@ -25,6 +25,8 @@ protected:
 	virtual void Initialize(UObject& Owner) override;
 	virtual void Execute(FMassEntityManager& EntityManager, FMassExecutionContext& Context) override;
 
+	
+
 private:
 	FMassEntityQuery AddToGridEntityQuery;
 	FMassEntityQuery UpdateGridEntityQuery;

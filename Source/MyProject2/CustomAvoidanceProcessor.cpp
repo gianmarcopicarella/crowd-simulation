@@ -185,7 +185,6 @@ namespace UE::CustomMassAvoidance
 // UMassNavigationSubsystem
 //----------------------------------------------------------------------//
 UCustomMassNavigationSubsystem::UCustomMassNavigationSubsystem()
-	: CustomAvoidanceObstacleGrid(250.f) // 2.5m grid
 {
 }
 
@@ -239,8 +238,8 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 		return;
 	}
 
-	const auto& pc = CustomNavigationSubsystem->GetObstacleTree();
-	my_kd_tree_t grid_TEST(2 /*dim*/, pc, { 10 /* max leaf */ });
+	const auto& pc = CustomNavigationSubsystem->GetPoints();
+	my_kd_tree_t grid_TEST(2, pc, { 10 });
 
 
 	EntityQuery.ForEachEntityChunk(EntityManager, Context, [this, &grid_TEST, &EntityManager](FMassExecutionContext& Context)

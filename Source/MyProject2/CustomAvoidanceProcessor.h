@@ -7,6 +7,8 @@
 #include "MassNavigationSubsystem.h"
 #include "HierarchicalHashGrid2D.h"
 
+#include "Misc/MTAccessDetector.h"
+
 #include "nanoflann.hpp"
 
 #include "CustomAvoidanceProcessor.generated.h"
@@ -78,18 +80,80 @@ public:
 	const CustomHashGrid2D& GetObstacleGrid() const { return CustomAvoidanceObstacleGrid; }
 	CustomHashGrid2D& GetObstacleGridMutable() { return CustomAvoidanceObstacleGrid; }
 
-	const PointCloud2D& GetObstacleTree() const { return points; }
-	PointCloud2D& GetObstacleTreeMutable() { return points; }
+	void SetPoints(const PointCloud2D& newpoints)
+	{
+		UE_MT_SCOPED_WRITE_ACCESS(PointsDetector)
+			points = newpoints;
+	}
+
+
+	//const PointCloud2D& GetObstacleTree() const { return points; }
+	PointCloud2D GetPoints() const
+	{
+		UE_MT_SCOPED_READ_ACCESS(PointsDetector)
+			return points;
+	}
+
+	bool isQueueEmpty() const
+	{
+		UE_MT_SCOPED_READ_ACCESS(RemoveQueueDetector)
+		return entitiesToRemove.Num() == 0;
+	}
+
+	TArray<FMassEntityHandle> GetZombiesToKill()
+	{
+		UE_MT_SCOPED_READ_ACCESS(RemoveQueueDetector)
+			return entitiesToRemove;
+	}
+
+	void EraseZombiesToKill()
+	{
+		UE_MT_SCOPED_WRITE_ACCESS(RemoveQueueDetector)
+			entitiesToRemove.Reset();
+	}
+
+	UFUNCTION(BlueprintCallable)
+		int AddZombiesToKillQueue(const FVector2D position)
+	{
+		UE_MT_SCOPED_READ_ACCESS(PointsDetector)
+		my_kd_tree_t grid_TEST(2 /*dim*/, points, { 10 /* max leaf */ });
+
+		const double                                       squaredRadius = 80000;
+		std::vector<nanoflann::ResultItem<size_t, double>> indices_dists;
+		indices_dists.reserve(100);
+		nanoflann::RadiusResultSet<double, size_t>         resultSet(
+			squaredRadius, indices_dists);
+
+		std::vector<double> c;
+		c.emplace_back(position.X);
+		c.emplace_back(position.Y);
+
+		grid_TEST.findNeighbors(resultSet, c.data()/*, nanoflann::SearchParameters{ 100.f }*/);
+
+		{
+			UE_MT_SCOPED_WRITE_ACCESS(RemoveQueueDetector)
+				for (int i = 0; i < indices_dists.size(); ++i)
+				{
+					const auto idx = indices_dists[i].first;
+					entitiesToRemove.Add(grid_TEST.dataset_.pts[idx].entity);
+				}
+		}
+
+		return indices_dists.size();
+	}
+
 
 protected:
 
 	// Same as standard implementation for now
 	CustomHashGrid2D CustomAvoidanceObstacleGrid;
 
-
-
 	// Test structure
-	PointCloud2D points;
+	UE_MT_DECLARE_RW_ACCESS_DETECTOR(PointsDetector)
+		PointCloud2D points;
+
+	UE_MT_DECLARE_RW_ACCESS_DETECTOR(RemoveQueueDetector)
+		TArray<FMassEntityHandle> entitiesToRemove;
 };
 
 template<>
