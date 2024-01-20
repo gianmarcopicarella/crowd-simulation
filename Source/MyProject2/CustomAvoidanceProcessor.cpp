@@ -41,7 +41,7 @@ namespace UE::CustomMassAvoidance
 
 	constexpr int32 MaxExpectedAgentsPerCell = 6;
 	constexpr int32 MinTouchingCellCount = 4;
-	constexpr int32 MaxObstacleResults = MaxExpectedAgentsPerCell * MinTouchingCellCount;
+	constexpr int32 MaxObstacleResults = 6;
 
 	static void FindCloseObstacles(const FVector& Center, const FVector::FReal SearchRadius, const my_kd_tree_t& AvoidanceObstacleGrid,
 		TArray<FMassNavigationObstacleItem, TFixedAllocator<MaxObstacleResults>>& OutCloseEntities, const int32 MaxResults)
@@ -238,7 +238,7 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 		return;
 	}
 
-	const auto& pc = CustomNavigationSubsystem->GetPoints();
+	const auto pc = CustomNavigationSubsystem->GetPoints();
 	my_kd_tree_t grid_TEST(2, pc, { 10 });
 
 
@@ -258,19 +258,6 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 			const FMassMovementParameters& MovementParams = Context.GetConstSharedFragment<FMassMovementParameters>();
 
 			const FVector::FReal InvPredictiveAvoidanceTime = 1. / MovingAvoidanceParams.PredictiveAvoidanceTime;
-
-			// Arrays used to store close obstacles
-			TArray<FMassNavigationObstacleItem, TFixedAllocator<UE::CustomMassAvoidance::MaxObstacleResults>> CloseEntities;
-
-			// Used for storing sorted list or nearest obstacles.
-			struct FSortedObstacle
-			{
-				FVector LocationCached;
-				FVector Forward;
-				FMassNavigationObstacleItem ObstacleItem;
-				FVector::FReal SqDist;
-			};
-			TArray<FSortedObstacle, TFixedAllocator<UE::CustomMassAvoidance::MaxObstacleResults>> ClosestObstacles;
 
 			// Potential contact between agent and environment. 
 			struct FEnvironmentContact
@@ -502,168 +489,102 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 				const FVector DesAcc = UE::MassNavigation::ClampVector(SteeringForce, MaxSteerAccel);
 				const FVector DesVel = UE::MassNavigation::ClampVector(AgentVelocity + DesAcc * DeltaTime, MaximumSpeed);
 
-				// Find close obstacles
-				//const FNavigationObstacleHashGrid2D& AvoidanceObstacleGrid = CustomNavigationSubsystem->GetObstacleGridMutable();
-				UE::CustomMassAvoidance::FindCloseObstacles(AgentLocation, MovingAvoidanceParams.ObstacleDetectionDistance, grid_TEST, CloseEntities, UE::CustomMassAvoidance::MaxObstacleResults);
 
-				// Remove unwanted and find the closests in the CloseEntities
-				//const FVector::FReal DistanceCutOffSqr = FMath::Square(MovingAvoidanceParams.ObstacleDetectionDistance);
-				ClosestObstacles.Reset();
-				for (const auto OtherEntity : CloseEntities)
+
+				// radius search:
+				const double                                       squaredRadius = MovingAvoidanceParams.ObstacleDetectionDistance * MovingAvoidanceParams.ObstacleDetectionDistance;
+				std::vector<nanoflann::ResultItem<size_t, double>> indices_dists;
+				indices_dists.reserve(6);
+
+				nanoflann::RadiusResultSet<double, size_t>         resultSet(
+					squaredRadius, indices_dists);
+
+				std::vector<double> c;
+				c.emplace_back(AgentLocation.X);
+				c.emplace_back(AgentLocation.Y);
+
+				grid_TEST.findNeighbors(resultSet, c.data(), nanoflann::SearchParameters{ 100.f });
+
+				Colliders.Reset();
+
+				constexpr int32 MaxColliders = 6;
+				for (int i = 0; i < std::min(indices_dists.size(), (size_t)MaxColliders); ++i)
 				{
-					// Skip self
-					if (OtherEntity.Entity == Entity)
-					{
-						continue;
-					}
+					const auto idx = indices_dists[i].first;
+					const auto OtherEntity = grid_TEST.dataset_.pts[idx].entity;
 
-					// Skip invalid entities.
-					if (!EntityManager.IsEntityValid(OtherEntity.Entity))
+					// Skip self
+					if (OtherEntity == Entity || !EntityManager.IsEntityValid(OtherEntity) || indices_dists[i].second > squaredRadius)
 					{
-						//UE_LOG(LogAvoidanceObstacles, VeryVerbose, TEXT("Close entity is invalid, skipped."));
 						continue;
 					}
 
 					// Skip too far
-					const FTransform& Transform = EntityManager.GetFragmentDataChecked<FTransformFragment>(OtherEntity.Entity).GetTransform();
-					const FVector OtherLocation = Transform.GetLocation();
+					const FTransform& Transform = EntityManager.GetFragmentDataChecked<FTransformFragment>(OtherEntity).GetTransform();
+					FMassEntityView OtherEntityView(EntityManager, OtherEntity);
+					const FMassVelocityFragment* OtherVelocityFragment = OtherEntityView.GetFragmentDataPtr<FMassVelocityFragment>();
+					const FVector OtherVelocity = OtherVelocityFragment != nullptr ? OtherVelocityFragment->Value : FVector::ZeroVector; // Get velocity from FAvoidanceComponent
 
-					const FVector::FReal SqDist = FVector::DistSquared(AgentLocation, OtherLocation);
-					/*if (SqDist > DistanceCutOffSqr)
-					{
-						continue;
-					}*/
-
-					FSortedObstacle Obstacle;
-					Obstacle.LocationCached = OtherLocation;
-					Obstacle.Forward = Transform.GetRotation().GetForwardVector();
-					Obstacle.ObstacleItem = OtherEntity;
-					Obstacle.SqDist = SqDist;
-					ClosestObstacles.Add(Obstacle);
+					FCollider& Collider = Colliders.Add_GetRef(FCollider{});
+					Collider.Location = Transform.GetLocation();
+					Collider.Velocity = OtherVelocity;
+					Collider.Radius = OtherEntityView.GetFragmentData<FAgentRadiusFragment>().Radius;
+					Collider.bCanAvoid = true;
+					Collider.bIsMoving = true;
 				}
-				//ClosestObstacles.Sort([](const FSortedObstacle& A, const FSortedObstacle& B) { return A.SqDist < B.SqDist; });
-
-				
 
 				// Compute forces
 				OldSteeringForce = SteeringForce;
 				FVector TotalAgentSeparationForce = FVector::ZeroVector;
 
 				// Fill collider list from close agents
-				Colliders.Reset();
-				constexpr int32 MaxColliders = 6;
-				for (int32 Index = 0; Index < std::min(MaxColliders, ClosestObstacles.Num()); Index++)
-				{
-					//if (Colliders.Num() >= MaxColliders)
-					//{
-					//	break;
-					//}
-
-					FSortedObstacle& Obstacle = ClosestObstacles[Index];
-					FMassEntityView OtherEntityView(EntityManager, Obstacle.ObstacleItem.Entity);
-
-					const FMassVelocityFragment* OtherVelocityFragment = OtherEntityView.GetFragmentDataPtr<FMassVelocityFragment>();
-					const FVector OtherVelocity = OtherVelocityFragment != nullptr ? OtherVelocityFragment->Value : FVector::ZeroVector; // Get velocity from FAvoidanceComponent
-
-					// @todo: this is heavy fragment to access, see if we could handle this differently.
-					const FMassMoveTargetFragment* OtherMoveTarget = OtherEntityView.GetFragmentDataPtr<FMassMoveTargetFragment>();
-					const bool bCanAvoid = OtherMoveTarget != nullptr;
-					const bool bOtherIsMoving = OtherMoveTarget ? OtherMoveTarget->GetCurrentAction() == EMassMovementAction::Move : true; // Assume moving if other does not have move target.
-
-					// Check for colliders data
-					if (EnumHasAnyFlags(Obstacle.ObstacleItem.ItemFlags, EMassNavigationObstacleFlags::HasColliderData))
-					{
-						if (const FMassAvoidanceColliderFragment* ColliderFragment = OtherEntityView.GetFragmentDataPtr<FMassAvoidanceColliderFragment>())
-						{
-							if (ColliderFragment->Type == EMassColliderType::Circle)
-							{
-								const FMassCircleCollider Circle = ColliderFragment->GetCircleCollider();
-
-								FCollider& Collider = Colliders.Add_GetRef(FCollider{});
-								Collider.Velocity = OtherVelocity;
-								Collider.bCanAvoid = bCanAvoid;
-								Collider.bIsMoving = bOtherIsMoving;
-								Collider.Radius = Circle.Radius;
-								Collider.Location = Obstacle.LocationCached;
-							}
-							else if (ColliderFragment->Type == EMassColliderType::Pill)
-							{
-								const FMassPillCollider Pill = ColliderFragment->GetPillCollider();
-
-								FCollider& Collider = Colliders.Add_GetRef(FCollider{});
-								Collider.Velocity = OtherVelocity;
-								Collider.bCanAvoid = bCanAvoid;
-								Collider.bIsMoving = bOtherIsMoving;
-								Collider.Radius = Pill.Radius;
-								Collider.Location = Obstacle.LocationCached + (Pill.HalfLength * Obstacle.Forward);
-
-								if (Colliders.Num() < MaxColliders)
-								{
-									FCollider& Collider2 = Colliders.Add_GetRef(FCollider{});
-									Collider2.Velocity = OtherVelocity;
-									Collider2.bCanAvoid = bCanAvoid;
-									Collider2.bIsMoving = bOtherIsMoving;
-									Collider2.Radius = Pill.Radius;
-									Collider2.Location = Obstacle.LocationCached + (-Pill.HalfLength * Obstacle.Forward);
-								}
-							}
-						}
-					}
-					else
-					{
-						FCollider& Collider = Colliders.Add_GetRef(FCollider{});
-						Collider.Location = Obstacle.LocationCached;
-						Collider.Velocity = OtherVelocity;
-						Collider.Radius = OtherEntityView.GetFragmentData<FAgentRadiusFragment>().Radius;
-						Collider.bCanAvoid = bCanAvoid;
-						Collider.bIsMoving = bOtherIsMoving;
-					}
-				}
+				
+				
 
 				// Process colliders for avoidance
 				for (const FCollider& Collider : Colliders)
 				{
-					bool bHasForcedNormal = false;
+					/*bool bHasForcedNormal = false;*/
 					FVector ForcedNormal = FVector::ZeroVector;
 
-					if (Collider.bCanAvoid == false)
-					{
-						// If the other obstacle cannot avoid us, try to avoid the local minima they create between the wall and their collider.
-						// If the space between edge and collider is less than MinClearance, make the agent to avoid the gap.
-						const FVector::FReal MinClearance = 2. * AgentRadius * MovingAvoidanceParams.StaticObstacleClearanceScale;
+					//if (Collider.bCanAvoid == false)
+					//{
+					//	// If the other obstacle cannot avoid us, try to avoid the local minima they create between the wall and their collider.
+					//	// If the space between edge and collider is less than MinClearance, make the agent to avoid the gap.
+					//	const FVector::FReal MinClearance = 2. * AgentRadius * MovingAvoidanceParams.StaticObstacleClearanceScale;
 
-						// Find the maximum distance from edges that are too close.
-						FVector::FReal MaxDist = -1.;
-						FVector ClosestPoint = FVector::ZeroVector;
-						for (const FNavigationAvoidanceEdge& Edge : NavEdges.AvoidanceEdges)
-						{
-							const FVector Point = FMath::ClosestPointOnSegment(Collider.Location, Edge.Start, Edge.End);
-							const FVector Offset = Collider.Location - Point;
-							if (FVector::DotProduct(Offset, Edge.LeftDir) < 0.)
-							{
-								// Behind the edge, ignore.
-								continue;
-							}
+					//	// Find the maximum distance from edges that are too close.
+					//	FVector::FReal MaxDist = -1.;
+					//	FVector ClosestPoint = FVector::ZeroVector;
+					//	for (const FNavigationAvoidanceEdge& Edge : NavEdges.AvoidanceEdges)
+					//	{
+					//		const FVector Point = FMath::ClosestPointOnSegment(Collider.Location, Edge.Start, Edge.End);
+					//		const FVector Offset = Collider.Location - Point;
+					//		if (FVector::DotProduct(Offset, Edge.LeftDir) < 0.)
+					//		{
+					//			// Behind the edge, ignore.
+					//			continue;
+					//		}
 
-							const FVector::FReal OffsetLength = Offset.Length();
-							const bool bTooNarrow = (OffsetLength - Collider.Radius) < MinClearance;
-							if (bTooNarrow)
-							{
-								if (OffsetLength > MaxDist)
-								{
-									MaxDist = OffsetLength;
-									ClosestPoint = Point;
-								}
-							}
-						}
+					//		const FVector::FReal OffsetLength = Offset.Length();
+					//		const bool bTooNarrow = (OffsetLength - Collider.Radius) < MinClearance;
+					//		if (bTooNarrow)
+					//		{
+					//			if (OffsetLength > MaxDist)
+					//			{
+					//				MaxDist = OffsetLength;
+					//				ClosestPoint = Point;
+					//			}
+					//		}
+					//	}
 
-						if (MaxDist != -1.)
-						{
-							// Set up forced normal to avoid the gap between collider and edge.
-							ForcedNormal = (Collider.Location - ClosestPoint).GetSafeNormal();
-							bHasForcedNormal = true;
-						}
-					}
+					//	if (MaxDist != -1.)
+					//	{
+					//		// Set up forced normal to avoid the gap between collider and edge.
+					//		ForcedNormal = (Collider.Location - ClosestPoint).GetSafeNormal();
+					//		bHasForcedNormal = true;
+					//	}
+					//}
 
 					FVector RelPos = AgentLocation - Collider.Location;
 					RelPos.Z = 0.; // we assume we work on a flat plane for now
@@ -672,13 +593,13 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 					const FVector ConNorm = ConDist > 0. ? RelPos / ConDist : FVector::ForwardVector;
 
 					FVector SeparationNormal = ConNorm;
-					if (bHasForcedNormal)
-					{
-						// The more head on the collisions is, the more we should avoid towards the forced direction.
-						const FVector RelVelNorm = RelVel.GetSafeNormal();
-						const FVector::FReal Blend = FMath::Max(0., -FVector::DotProduct(ConNorm, RelVelNorm));
-						SeparationNormal = FMath::Lerp(ConNorm, ForcedNormal, Blend).GetSafeNormal();
-					}
+					//if (bHasForcedNormal)
+					//{
+					//	// The more head on the collisions is, the more we should avoid towards the forced direction.
+					//	const FVector RelVelNorm = RelVel.GetSafeNormal();
+					//	const FVector::FReal Blend = FMath::Max(0., -FVector::DotProduct(ConNorm, RelVelNorm));
+					//	SeparationNormal = FMath::Lerp(ConNorm, ForcedNormal, Blend).GetSafeNormal();
+					//}
 
 					const FVector::FReal StandingScaling = Collider.bIsMoving ? 1. : MovingAvoidanceParams.StandingObstacleAvoidanceScale; // Care less about standing agents so that we can push through standing crowd.
 
@@ -700,13 +621,13 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 					const FVector AvoidConNormal = AvoidDist > 0. ? (AvoidRelPos / AvoidDist) : FVector::ForwardVector;
 
 					FVector AvoidNormal = AvoidConNormal;
-					if (bHasForcedNormal)
-					{
-						// The more head on the predicted collisions is, the more we should avoid towards the forced direction.
-						const FVector RelVelNorm = RelVel.GetSafeNormal();
-						const FVector::FReal Blend = FMath::Max(0., -FVector::DotProduct(AvoidConNormal, RelVelNorm));
-						AvoidNormal = FMath::Lerp(AvoidConNormal, ForcedNormal, Blend).GetSafeNormal();
-					}
+					//if (bHasForcedNormal)
+					//{
+					//	// The more head on the predicted collisions is, the more we should avoid towards the forced direction.
+					//	const FVector RelVelNorm = RelVel.GetSafeNormal();
+					//	const FVector::FReal Blend = FMath::Max(0., -FVector::DotProduct(AvoidConNormal, RelVelNorm));
+					//	AvoidNormal = FMath::Lerp(AvoidConNormal, ForcedNormal, Blend).GetSafeNormal();
+					//}
 
 					const FVector::FReal AvoidPenetration = (PredictiveAvoidanceAgentRadius + Collider.Radius + MovingAvoidanceParams.PredictiveAvoidanceDistance) - AvoidDist; // Based on future agents distance
 					const FVector::FReal AvoidMag = FMath::Square(FMath::Clamp(AvoidPenetration / MovingAvoidanceParams.PredictiveAvoidanceDistance, 0., 1.));
@@ -721,7 +642,7 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 				SteeringForce *= NearStartScaling * NearEndScaling;
 
 				Force.Value = UE::MassNavigation::ClampVector(SteeringForce, MaxSteerAccel); // Assume unit mass
-				
+
 			}
 		});
 }

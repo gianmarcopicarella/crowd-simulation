@@ -86,8 +86,6 @@ public:
 			points = newpoints;
 	}
 
-
-	//const PointCloud2D& GetObstacleTree() const { return points; }
 	PointCloud2D GetPoints() const
 	{
 		UE_MT_SCOPED_READ_ACCESS(PointsDetector)
@@ -135,7 +133,7 @@ public:
 		UE_MT_SCOPED_READ_ACCESS(PointsDetector)
 			my_kd_tree_t grid_TEST(2 /*dim*/, points, { 10 /* max leaf */ });
 
-		const double                                       squaredRadius = 80000;
+		const double                                       squaredRadius = 140000;
 		std::vector<nanoflann::ResultItem<size_t, double>> indices_dists;
 		indices_dists.reserve(100);
 		nanoflann::RadiusResultSet<double, size_t>         resultSet(
@@ -160,7 +158,7 @@ public:
 	}
 
 
-protected:
+public:
 
 	// Same as standard implementation for now
 	CustomHashGrid2D CustomAvoidanceObstacleGrid;
