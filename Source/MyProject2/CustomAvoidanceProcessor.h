@@ -97,7 +97,7 @@ public:
 	bool isQueueEmpty() const
 	{
 		UE_MT_SCOPED_READ_ACCESS(RemoveQueueDetector)
-		return entitiesToRemove.Num() == 0;
+			return entitiesToRemove.Num() == 0;
 	}
 
 	TArray<FMassEntityHandle> GetZombiesToKill()
@@ -113,10 +113,27 @@ public:
 	}
 
 	UFUNCTION(BlueprintCallable)
+		int GetZombiesWithinSafeArea(const double squaredRadius)
+	{
+		const FVector2D origin{ 0,0 };
+		UE_MT_SCOPED_READ_ACCESS(PointsDetector)
+			int count = 0;
+			for (const auto p : points.pts)
+			{
+				if(FVector2D::DistSquared(origin, FVector2D{p.x, p.y}) < squaredRadius)
+				{
+					++count;
+				}
+			}
+
+			return count;
+	}
+
+	UFUNCTION(BlueprintCallable)
 		int AddZombiesToKillQueue(const FVector2D position)
 	{
 		UE_MT_SCOPED_READ_ACCESS(PointsDetector)
-		my_kd_tree_t grid_TEST(2 /*dim*/, points, { 10 /* max leaf */ });
+			my_kd_tree_t grid_TEST(2 /*dim*/, points, { 10 /* max leaf */ });
 
 		const double                                       squaredRadius = 80000;
 		std::vector<nanoflann::ResultItem<size_t, double>> indices_dists;
