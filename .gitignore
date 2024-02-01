@@ -12,3 +12,16 @@ Saved
 *.suo
 *.xcodeproj
 *.xcworkspace
+Build/Windows/FileOpenOrder/EditorOpenOrder.log
+CrowdSimulationGameBuild.zip
+Windows_Build/Engine/Content/Slate/Cursor/invisible.cur
+Windows_Build/Engine/Extras/Redist/en-us/UEPrereqSetup_x64.exe
+Windows_Build/Manifest_NonUFSFiles_Win64.txt
+Windows_Build/Manifest_UFSFiles_Win64.txt
+Windows_Build/MyProject2.exe
+Windows_Build/MyProject2/Content/Paks/global.ucas
+Windows_Build/MyProject2/Content/Paks/global.utoc
+Windows_Build/MyProject2/Content/Paks/MyProject2-Windows.pak
+Windows_Build/MyProject2/Content/Paks/MyProject2-Windows.ucas
+Windows_Build/MyProject2/Content/Paks/MyProject2-Windows.utoc
+Build/Windows/FileOpenOrder/CookerOpenOrder.log
