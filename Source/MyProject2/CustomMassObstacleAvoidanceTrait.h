@@ -181,7 +181,12 @@ USTRUCT()
 struct MYPROJECT2_API FCustomMassNavigationObstacleGridCellLocationFragment : public FMassFragment
 {
 	GENERATED_BODY()
-		FNavigationObstacleHashGrid2D::FCellLocation CellLoc;
+	// old: not used anymore
+		//FNavigationObstacleHashGrid2D::FCellLocation CellLoc;
+	// new
+		int sliceIndex{ 0 };
+		TArray<FMassEntityHandle> myNeighbours;
+
 };
 
 

@@ -200,7 +200,7 @@ private:
 	TObjectPtr<UWorld> World;
 	TObjectPtr<UCustomMassNavigationSubsystem> CustomNavigationSubsystem;
 	FMassEntityQuery EntityQuery;
-
+	bool isFirstFrame{ true };
 };
 
 

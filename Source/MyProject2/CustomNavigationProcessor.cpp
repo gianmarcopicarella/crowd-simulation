@@ -143,7 +143,7 @@ void UCustomMassNavigationObstacleRemoverProcessor::Execute(FMassEntityManager& 
 			{
 				FMassNavigationObstacleItem ObstacleItem;
 				ObstacleItem.Entity = Context.GetEntity(i);
-				HashGrid.Remove(ObstacleItem, AvoidanceObstacleCellLocationList[i].CellLoc);
+				//HashGrid.Remove(ObstacleItem, AvoidanceObstacleCellLocationList[i].CellLoc);
 			}
 		});
 }
