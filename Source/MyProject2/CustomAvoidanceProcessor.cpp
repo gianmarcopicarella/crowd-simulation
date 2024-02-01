@@ -203,6 +203,7 @@ UCustomAvoidanceProcessor::UCustomAvoidanceProcessor()
 	ExecutionOrder.ExecuteInGroup = UE::Mass::ProcessorGroupNames::Avoidance;
 	ExecutionOrder.ExecuteAfter.Add(UE::Mass::ProcessorGroupNames::LOD);
 	isFirstFrame = true;
+	sliceTurn = 0;
 }
 
 void UCustomAvoidanceProcessor::ConfigureQueries()
@@ -244,8 +245,6 @@ void UCustomAvoidanceProcessor::Execute(FMassEntityManager& EntityManager, FMass
 
 	const auto pc = CustomNavigationSubsystem->GetPoints();
 	my_kd_tree_t grid_TEST(2, pc, { 10 });
-
-	static int sliceTurn = 0;
 
 	constexpr auto slicingCount = 3;
 

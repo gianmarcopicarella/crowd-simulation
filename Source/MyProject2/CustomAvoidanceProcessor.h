@@ -201,6 +201,7 @@ private:
 	TObjectPtr<UCustomMassNavigationSubsystem> CustomNavigationSubsystem;
 	FMassEntityQuery EntityQuery;
 	bool isFirstFrame{ true };
+	int sliceTurn{ 0 };
 };
 
 
