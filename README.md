@@ -1,5 +1,5 @@
 # Crowd Simulation 23/24 course project
-### Developed by [Gianmarco Picarella](), [Joel Brieger]() and [Nikos Giakoumoglou]()
+### Developed by 
 
 
 <img src="https://github.com/gianmarcopicarella/crowd-simulation/blob/main/Assignment%20Deliverables/repository_wallpaper.png?raw=true" width="100%">
